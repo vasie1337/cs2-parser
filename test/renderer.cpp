@@ -7,7 +7,7 @@ namespace Renderer {
 
 Camera::Camera()
     : m_Position(0.0f, 0.0f, -5.0f)
-    , m_Rotation(0.0f, XM_PI, 0.0f)
+    , m_Rotation(0.0f, 0.0f, 0.0f)
     , m_Forward(0.0f, 0.0f, 1.0f)
     , m_Right(1.0f, 0.0f, 0.0f)
     , m_Up(0.0f, 1.0f, 0.0f)
@@ -69,12 +69,6 @@ void Camera::RotateYaw(float angle)
 void Camera::RotatePitch(float angle)
 {
     m_Rotation.x += angle;
-    
-    if (m_Rotation.x > XM_PIDIV2 - 0.1f)
-        m_Rotation.x = XM_PIDIV2 - 0.1f;
-    if (m_Rotation.x < -XM_PIDIV2 + 0.1f)
-        m_Rotation.x = -XM_PIDIV2 + 0.1f;
-        
     UpdateVectors();
 }
 
@@ -100,16 +94,20 @@ XMMATRIX Camera::GetProjectionMatrix() const
 
 void Camera::UpdateVectors()
 {
+    // Create rotation matrix using pitch, yaw, roll (x, y, z)
     XMMATRIX rotationMatrix = XMMatrixRotationRollPitchYaw(m_Rotation.x, m_Rotation.y, m_Rotation.z);
     
-    XMVECTOR forward = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-    XMVECTOR right = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
-    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    // Define standard basis vectors
+    XMVECTOR forward = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);  // Looking down +Z axis
+    XMVECTOR right = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);    // Right is +X axis
+    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);       // Up is +Y axis
     
+    // Transform basis vectors by rotation matrix
     forward = XMVector3TransformNormal(forward, rotationMatrix);
     right = XMVector3TransformNormal(right, rotationMatrix);
     up = XMVector3TransformNormal(up, rotationMatrix);
     
+    // Store transformed vectors
     XMStoreFloat3(&m_Forward, forward);
     XMStoreFloat3(&m_Right, right);
     XMStoreFloat3(&m_Up, up);
@@ -579,6 +577,7 @@ Application::Application()
     , m_LastMouseX(0)
     , m_LastMouseY(0)
     , m_MouseDown(false)
+    , m_RightMouseDown(false)
 {
     memset(m_Keys, 0, sizeof(m_Keys));
 }
@@ -684,11 +683,24 @@ bool Application::InitializeWindow(HINSTANCE hInstance, int nCmdShow)
 
 void Application::ProcessInput()
 {
-    float moveSpeed = 20.0f;
+    float baseSpeed = 20.0f;
+    float moveSpeed = baseSpeed;
     float rotateSpeed = 0.01f;
     
     Camera& camera = m_Renderer.GetCamera();
     
+    // Apply speed modifiers with multiple tiers
+    if (m_Keys[VK_SHIFT])
+    {
+        if (m_Keys[VK_MENU]) // Alt key for super speed
+            moveSpeed *= 20.0f;
+        else
+            moveSpeed *= 5.0f;
+    }
+    if (m_Keys[VK_CONTROL])
+        moveSpeed *= 0.2f;
+    
+    // Basic movement controls
     if (m_Keys['W'])
         camera.MoveForward(moveSpeed);
     if (m_Keys['S'])
@@ -697,16 +709,30 @@ void Application::ProcessInput()
         camera.MoveRight(-moveSpeed);
     if (m_Keys['D'])
         camera.MoveRight(moveSpeed);
-    
-    if (m_Keys['E'])
+    if (m_Keys['E'] || m_Keys[VK_SPACE])
         camera.MoveUp(moveSpeed);
-    if (m_Keys['Q'])
+    if (m_Keys['Q'] || m_Keys[VK_LCONTROL])
         camera.MoveUp(-moveSpeed);
     
-    if (m_Keys[VK_SHIFT])
-        moveSpeed *= 5.0f;
-    if (m_Keys[VK_CONTROL])
-        moveSpeed *= 0.2f;
+    // Additional rotation controls with keyboard
+    if (m_Keys[VK_UP])
+        camera.RotatePitch(rotateSpeed);
+    if (m_Keys[VK_DOWN])
+        camera.RotatePitch(-rotateSpeed);
+    if (m_Keys[VK_LEFT])
+        camera.RotateYaw(-rotateSpeed);
+    if (m_Keys[VK_RIGHT])
+        camera.RotateYaw(rotateSpeed);
+    if (m_Keys['Z'])
+        camera.RotateRoll(-rotateSpeed);
+    if (m_Keys['C'])
+        camera.RotateRoll(rotateSpeed);
+    
+    // Reset camera orientation with R key
+    if (m_Keys['R'])
+    {
+        camera.SetRotation(XMFLOAT3(0.0f, 0.0f, 0.0f));
+    }
 }
 
 LRESULT CALLBACK Application::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -751,12 +777,32 @@ LRESULT CALLBACK Application::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
             if (app)
             {
                 app->m_MouseDown = false;
-                ReleaseCapture();
+                if (!app->m_RightMouseDown)
+                    ReleaseCapture();
+            }
+            break;
+            
+        case WM_RBUTTONDOWN:
+            if (app)
+            {
+                app->m_RightMouseDown = true;
+                app->m_LastMouseX = GET_X_LPARAM(lParam);
+                app->m_LastMouseY = GET_Y_LPARAM(lParam);
+                SetCapture(hWnd);
+            }
+            break;
+            
+        case WM_RBUTTONUP:
+            if (app)
+            {
+                app->m_RightMouseDown = false;
+                if (!app->m_MouseDown)
+                    ReleaseCapture();
             }
             break;
             
         case WM_MOUSEMOVE:
-            if (app && app->m_MouseDown)
+            if (app && (app->m_MouseDown || app->m_RightMouseDown))
             {
                 int x = GET_X_LPARAM(lParam);
                 int y = GET_Y_LPARAM(lParam);
@@ -765,11 +811,40 @@ LRESULT CALLBACK Application::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
                 int dy = y - app->m_LastMouseY;
                 
                 Camera& camera = app->m_Renderer.GetCamera();
-                camera.RotateYaw(dx * 0.01f);
-                camera.RotatePitch(dy * 0.01f);
+                
+                if (app->m_MouseDown && app->m_RightMouseDown)
+                {
+                    // Both buttons: Roll control
+                    camera.RotateRoll(dx * 0.01f);
+                }
+                else if (app->m_MouseDown)
+                {
+                    // Left button: Yaw and pitch
+                    camera.RotateYaw(dx * 0.01f);
+                    camera.RotatePitch(-dy * 0.01f);
+                }
+                else if (app->m_RightMouseDown)
+                {
+                    // Right button: Move up/down and left/right
+                    camera.MoveRight(dx * 0.5f);
+                    camera.MoveUp(dy * 0.5f);
+                }
                 
                 app->m_LastMouseX = x;
                 app->m_LastMouseY = y;
+            }
+            break;
+            
+        case WM_MOUSEWHEEL:
+            if (app)
+            {
+                // Mouse wheel for zoom (move forward/backward)
+                int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+                Camera& camera = app->m_Renderer.GetCamera();
+                
+                // Scale the movement based on the current position and Alt key for precision
+                float zoomSpeed = app->m_Keys[VK_MENU] ? 0.05f : 0.5f;
+                camera.MoveForward(delta * zoomSpeed);
             }
             break;
             

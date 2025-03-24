@@ -135,5 +135,6 @@ namespace Renderer {
         int m_LastMouseX;
         int m_LastMouseY;
         bool m_MouseDown;
+        bool m_RightMouseDown;
     };
 } 
