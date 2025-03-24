@@ -7,14 +7,14 @@ namespace Renderer {
 
 Camera::Camera()
     : m_Position(0.0f, 0.0f, -5.0f)
-    , m_Rotation(0.0f, 0.0f, 0.0f)
+    , m_Rotation(0.0f, XM_PI, 0.0f)
     , m_Forward(0.0f, 0.0f, 1.0f)
     , m_Right(1.0f, 0.0f, 0.0f)
     , m_Up(0.0f, 1.0f, 0.0f)
     , m_FieldOfView(XM_PIDIV4)
     , m_AspectRatio(16.0f / 9.0f)
     , m_NearPlane(0.1f)
-    , m_FarPlane(1000.0f)
+    , m_FarPlane(100000.0f)
 {
     UpdateVectors();
 }
@@ -145,7 +145,7 @@ bool Renderer::Initialize(HWND hWnd, int width, int height)
     m_Width = width;
     m_Height = height;
     
-    m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -300.0f));
+    m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -2000.0f));
     
     if (!InitializeDirectX(hWnd, width, height))
         return false;
@@ -197,6 +197,30 @@ bool Renderer::LoadTriangles(const std::vector<cs2::Triangle>& triangles)
 {
     m_Vertices.clear();
     
+    XMFLOAT3 minBounds(FLT_MAX, FLT_MAX, FLT_MAX);
+    XMFLOAT3 maxBounds(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+    
+    for (const auto& triangle : triangles)
+    {
+        minBounds.x = std::min<float>(minBounds.x, std::min<float>(triangle.a.x, std::min<float>(triangle.b.x, triangle.c.x)));
+        minBounds.y = std::min<float>(minBounds.y, std::min<float>(triangle.a.y, std::min<float>(triangle.b.y, triangle.c.y)));
+        minBounds.z = std::min<float>(minBounds.z, std::min<float>(triangle.a.z, std::min<float>(triangle.b.z, triangle.c.z)));
+        
+        maxBounds.x = std::max<float>(maxBounds.x, std::max<float>(triangle.a.x, std::max<float>(triangle.b.x, triangle.c.x)));
+        maxBounds.y = std::max<float>(maxBounds.y, std::max<float>(triangle.a.y, std::max<float>(triangle.b.y, triangle.c.y)));
+        maxBounds.z = std::max<float>(maxBounds.z, std::max<float>(triangle.a.z, std::max<float>(triangle.b.z, triangle.c.z)));
+    }
+    
+    XMFLOAT3 center(
+        (minBounds.x + maxBounds.x) * 0.5f,
+        (minBounds.y + maxBounds.y) * 0.5f,
+        (minBounds.z + maxBounds.z) * 0.5f
+    );
+    
+    std::cout << "Model bounds: Min(" << minBounds.x << ", " << minBounds.y << ", " << minBounds.z << ") "
+              << "Max(" << maxBounds.x << ", " << maxBounds.y << ", " << maxBounds.z << ")" << std::endl;
+    std::cout << "Model center: (" << center.x << ", " << center.y << ", " << center.z << ")" << std::endl;
+    
     for (const auto& triangle : triangles)
     {
         float r = (float)rand() / RAND_MAX;
@@ -204,9 +228,18 @@ bool Renderer::LoadTriangles(const std::vector<cs2::Triangle>& triangles)
         float b = (float)rand() / RAND_MAX;
         XMFLOAT4 color(r, g, b, 1.0f);
         
-        m_Vertices.push_back({ XMFLOAT3(triangle.a.x, triangle.a.y, triangle.a.z), color });
-        m_Vertices.push_back({ XMFLOAT3(triangle.b.x, triangle.b.y, triangle.b.z), color });
-        m_Vertices.push_back({ XMFLOAT3(triangle.c.x, triangle.c.y, triangle.c.z), color });
+        m_Vertices.push_back({ 
+            XMFLOAT3(triangle.a.x - center.x, triangle.a.y - center.y, triangle.a.z - center.z), 
+            color 
+        });
+        m_Vertices.push_back({ 
+            XMFLOAT3(triangle.b.x - center.x, triangle.b.y - center.y, triangle.b.z - center.z), 
+            color 
+        });
+        m_Vertices.push_back({ 
+            XMFLOAT3(triangle.c.x - center.x, triangle.c.y - center.y, triangle.c.z - center.z), 
+            color 
+        });
     }
     
     m_VertexCount = (int)m_Vertices.size();
@@ -651,7 +684,7 @@ bool Application::InitializeWindow(HINSTANCE hInstance, int nCmdShow)
 
 void Application::ProcessInput()
 {
-    float moveSpeed = 5.0f;
+    float moveSpeed = 20.0f;
     float rotateSpeed = 0.01f;
     
     Camera& camera = m_Renderer.GetCamera();
@@ -671,9 +704,9 @@ void Application::ProcessInput()
         camera.MoveUp(-moveSpeed);
     
     if (m_Keys[VK_SHIFT])
-        moveSpeed *= 2.0f;
+        moveSpeed *= 5.0f;
     if (m_Keys[VK_CONTROL])
-        moveSpeed *= 0.5f;
+        moveSpeed *= 0.2f;
 }
 
 LRESULT CALLBACK Application::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
