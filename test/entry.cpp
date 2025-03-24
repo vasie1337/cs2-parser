@@ -5,10 +5,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 {
 	std::vector<cs2::Triangle> triangles;
 	
-	std::ifstream in("de_dust2.tri", std::ios::binary);
+	std::ifstream in("de_mirage.tri", std::ios::binary);
 	if (!in)
 	{
-		MessageBoxA(NULL, "Failed to open file: de_dust2.tri\nMake sure the file exists in the executable directory.", "Error", MB_OK | MB_ICONERROR);
+		MessageBoxA(NULL, "Failed to open file: de_mirage.tri\nMake sure the file exists in the executable directory.", "Error", MB_OK | MB_ICONERROR);
 		return 1;
 	}
 

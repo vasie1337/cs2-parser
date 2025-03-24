@@ -282,7 +282,7 @@ bool Renderer::InitializeDirectX(HWND hWnd, int width, int height)
     swapChainDesc.OutputWindow = hWnd;
     swapChainDesc.SampleDesc.Count = 1;
     swapChainDesc.SampleDesc.Quality = 0;
-    swapChainDesc.Windowed = TRUE;
+    swapChainDesc.Windowed = FALSE;
     
     UINT createDeviceFlags = 0;
 #ifdef _DEBUG
@@ -592,7 +592,7 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow)
     if (!InitializeWindow(hInstance, nCmdShow))
         return false;
     
-    if (!m_Renderer.Initialize(m_hWnd, 1280, 720))
+    if (!m_Renderer.Initialize(m_hWnd, 2560, 1440))
         return false;
     
     m_Running = true;
@@ -659,7 +659,7 @@ bool Application::InitializeWindow(HINSTANCE hInstance, int nCmdShow)
         return false;
     }
     
-    RECT rc = { 0, 0, 1280, 720 };
+    RECT rc = { 0, 0, 2560, 1440 };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
     
     m_hWnd = CreateWindow(
