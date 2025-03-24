@@ -10,6 +10,7 @@
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <unordered_map>
 
 namespace cs2
 {
@@ -41,10 +42,61 @@ namespace cs2
 	
 	class PhysicsFile {
 	public:
+		/// <summary>
+		/// Load a physics file from a given filename and working directory.
+		/// </summary>
+		/// <param name="filename">
+		/// The filename of the physics file.
+		/// </param>
+		/// <param name="workingDir">
+		/// The working directory of the physics file.
+		/// </param>
+		/// <returns>
+		/// Returns true if the file was loaded successfully, false otherwise.
+		/// </returns>
 		bool load(const std::string& filename, const std::string& workingDir);
 
+		/// <summary>
+		/// Write the triangles of the physics file to a given filename.
+		/// </summary>
+		/// <param name="filename">
+		/// The filename to write the triangles to.
+		/// </param>
+		void writeTriangles(const std::string& filename);
+
+		/// <summary>
+		/// Display the statistics of the physics file.
+		/// </summary>
+		void displayStats();
+
+		/// <summary>
+		/// Get the hulls of the physics file.
+		/// </summary>
+		/// <returns>
+		/// Returns the hulls of the physics file.
+		/// </returns>
 		const std::vector<HullFile>& getHulls() const { return hulls; }
+
+		/// <summary>
+		/// Get the filename of the physics file.
+		/// </summary>
+		/// <returns>
+		/// Returns the filename of the physics file.
+		/// </returns>
+		const std::string& getFilename() const { return filename; }
+
+		/// <summary>
+		/// Get the map name of the physics file.
+		/// </summary>
+		/// <returns>
+		/// Returns the map name of the physics file.
+		/// </returns>
+		const std::string& getMapname() const { return mapname; }
+
 	private:
+		std::string filename;
+		std::string mapname;
+
 		std::vector<HullFile> hulls;
 
 		void parseHull(HullFile& hull, const std::string& workingDir);

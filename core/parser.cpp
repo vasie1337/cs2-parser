@@ -9,6 +9,8 @@ bool cs2::PhysicsFile::load(const std::string& filename, const std::string& work
 		return false;
 	}
 
+	this->filename = removePath(filename);
+
 	std::vector<char> buffer(std::istreambuf_iterator<char>(file), {});
 	buffer.push_back('\0');
 	file.close();
@@ -24,8 +26,6 @@ bool cs2::PhysicsFile::load(const std::string& filename, const std::string& work
         size_t end = data.find("\"", start);
         Hull.name = std::string(data.substr(start, end - start));
 
-		Hull.name = removePath(Hull.name);
-
 		// Surface Prop
         start = data.find("surface_prop = \"", end) + 16;
         end = data.find("\"", start);
@@ -36,6 +36,10 @@ bool cs2::PhysicsFile::load(const std::string& filename, const std::string& work
         data = data.substr(end);
     }
 
+	this->mapname = hulls[0].name;
+	this->mapname.erase(0, 5);
+	this->mapname.erase(this->mapname.find("/"), this->mapname.size());
+
 	for (auto& Hull : hulls) {
 		parseHull(Hull, workingDir);
 	}
@@ -43,12 +47,60 @@ bool cs2::PhysicsFile::load(const std::string& filename, const std::string& work
 	return true;
 }
 
-void cs2::PhysicsFile::parseHull(HullFile& hull, const std::string& workingDir)
+void cs2::PhysicsFile::writeTriangles(const std::string& filename)
 {
-	std::ifstream file(workingDir + "/" + hull.name);
+	std::ofstream file(filename);
 	if (!file.is_open())
 	{
-		std::cerr << "Failed to open file: " << hull.name << std::endl;
+		std::cerr << "Failed to open file: " << filename << std::endl;
+		return;
+	}
+
+	for (auto& Hull : hulls)
+	{
+		for (auto& tri : Hull.triangles)
+		{
+			file << reinterpret_cast<char*>(&tri) << std::endl;
+		}
+	}
+
+	file.close();
+}
+
+void cs2::PhysicsFile::displayStats()
+{
+	std::cout << "Filename: " << filename << std::endl;
+	std::cout << "Mapname: " << mapname << std::endl;
+
+	std::unordered_map<std::string, int> surface_props;
+	int total_triangles = 0;
+
+	for (auto& Hull : hulls)
+	{
+		total_triangles += static_cast<int>(Hull.triangles.size());
+		surface_props[Hull.surface_prop]++;
+	}
+
+	std::cout << "Total Hulls: " << hulls.size() << std::endl;
+	std::cout << "Total Triangles: " << total_triangles << std::endl;
+
+	std::cout << "Surface Props:" << std::endl;
+	for (auto& [prop, count] : surface_props)
+	{
+		std::cout << prop << ": " << count << std::endl;
+	}
+
+	std::cout << std::endl;
+}
+
+void cs2::PhysicsFile::parseHull(HullFile& hull, const std::string& workingDir)
+{
+	std::string file_name = removePath(hull.name);
+
+	std::ifstream file(workingDir + "/" + file_name);
+	if (!file.is_open())
+	{
+		std::cerr << "Failed to open file: " << file_name << std::endl;
 		return;
 	}
 
