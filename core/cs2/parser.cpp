@@ -49,7 +49,7 @@ bool cs2::PhysicsFile::load(const std::string& filename, const std::string& work
 
 void cs2::PhysicsFile::writeTriangles(const std::string& filename)
 {
-	std::ofstream file(filename);
+	std::ofstream file(filename, std::ios::binary);
 	if (!file.is_open())
 	{
 		std::cerr << "Failed to open file: " << filename << std::endl;
@@ -60,7 +60,7 @@ void cs2::PhysicsFile::writeTriangles(const std::string& filename)
 	{
 		for (auto& tri : Hull.triangles)
 		{
-			file << reinterpret_cast<char*>(&tri) << std::endl;
+			file.write(reinterpret_cast<const char*>(&tri), sizeof(cs2::Triangle));
 		}
 	}
 
