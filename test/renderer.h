@@ -53,7 +53,7 @@ namespace Renderer {
         void UpdateVectors();
 
         DirectX::XMFLOAT3 m_Position;
-        DirectX::XMFLOAT3 m_Rotation; // In radians (pitch, yaw, roll)
+        DirectX::XMFLOAT3 m_Rotation;
         
         DirectX::XMFLOAT3 m_Forward;
         DirectX::XMFLOAT3 m_Right;
@@ -83,6 +83,7 @@ namespace Renderer {
         bool CreateShaders();
         bool CreateVertexBuffer();
         bool CreateConstantBuffers();
+        bool CreateRasterizerState();
         void UpdateConstantBuffers();
 
         ID3D11Device* m_Device;
@@ -99,6 +100,8 @@ namespace Renderer {
         
         ID3D11Buffer* m_CameraBuffer;
         ID3D11Buffer* m_WorldBuffer;
+        
+        ID3D11RasterizerState* m_WireframeRasterizerState;
         
         std::vector<Vertex> m_Vertices;
         int m_VertexCount;
@@ -128,7 +131,6 @@ namespace Renderer {
         Renderer m_Renderer;
         bool m_Running;
         
-        // Input state
         bool m_Keys[256];
         int m_LastMouseX;
         int m_LastMouseY;

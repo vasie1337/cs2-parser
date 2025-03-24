@@ -5,7 +5,6 @@ using namespace DirectX;
 
 namespace Renderer {
 
-// Camera implementation
 Camera::Camera()
     : m_Position(0.0f, 0.0f, -5.0f)
     , m_Rotation(0.0f, 0.0f, 0.0f)
@@ -71,7 +70,6 @@ void Camera::RotatePitch(float angle)
 {
     m_Rotation.x += angle;
     
-    // Clamp pitch to avoid gimbal lock
     if (m_Rotation.x > XM_PIDIV2 - 0.1f)
         m_Rotation.x = XM_PIDIV2 - 0.1f;
     if (m_Rotation.x < -XM_PIDIV2 + 0.1f)
@@ -102,26 +100,21 @@ XMMATRIX Camera::GetProjectionMatrix() const
 
 void Camera::UpdateVectors()
 {
-    // Create rotation matrix based on yaw, pitch, roll
     XMMATRIX rotationMatrix = XMMatrixRotationRollPitchYaw(m_Rotation.x, m_Rotation.y, m_Rotation.z);
     
-    // Base vectors
     XMVECTOR forward = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
     XMVECTOR right = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     
-    // Transform vectors
     forward = XMVector3TransformNormal(forward, rotationMatrix);
     right = XMVector3TransformNormal(right, rotationMatrix);
     up = XMVector3TransformNormal(up, rotationMatrix);
     
-    // Store transformed vectors
     XMStoreFloat3(&m_Forward, forward);
     XMStoreFloat3(&m_Right, right);
     XMStoreFloat3(&m_Up, up);
 }
 
-// Renderer implementation
 Renderer::Renderer()
     : m_Device(nullptr)
     , m_DeviceContext(nullptr)
@@ -135,6 +128,7 @@ Renderer::Renderer()
     , m_PixelShader(nullptr)
     , m_CameraBuffer(nullptr)
     , m_WorldBuffer(nullptr)
+    , m_WireframeRasterizerState(nullptr)
     , m_VertexCount(0)
     , m_Width(0)
     , m_Height(0)
@@ -151,7 +145,6 @@ bool Renderer::Initialize(HWND hWnd, int width, int height)
     m_Width = width;
     m_Height = height;
     
-    // Set aspect ratio for camera
     m_Camera.SetPosition(XMFLOAT3(0.0f, 0.0f, -300.0f));
     
     if (!InitializeDirectX(hWnd, width, height))
@@ -163,11 +156,15 @@ bool Renderer::Initialize(HWND hWnd, int width, int height)
     if (!CreateConstantBuffers())
         return false;
         
+    if (!CreateRasterizerState())
+        return false;
+        
     return true;
 }
 
 void Renderer::Shutdown()
 {
+    if (m_WireframeRasterizerState) m_WireframeRasterizerState->Release();
     if (m_WorldBuffer) m_WorldBuffer->Release();
     if (m_CameraBuffer) m_CameraBuffer->Release();
     if (m_VertexBuffer) m_VertexBuffer->Release();
@@ -181,6 +178,7 @@ void Renderer::Shutdown()
     if (m_DeviceContext) m_DeviceContext->Release();
     if (m_Device) m_Device->Release();
     
+    m_WireframeRasterizerState = nullptr;
     m_WorldBuffer = nullptr;
     m_CameraBuffer = nullptr;
     m_VertexBuffer = nullptr;
@@ -197,18 +195,15 @@ void Renderer::Shutdown()
 
 bool Renderer::LoadTriangles(const std::vector<cs2::Triangle>& triangles)
 {
-    // Convert triangles to vertices
     m_Vertices.clear();
     
     for (const auto& triangle : triangles)
     {
-        // Random color per triangle for better visualization
         float r = (float)rand() / RAND_MAX;
         float g = (float)rand() / RAND_MAX;
         float b = (float)rand() / RAND_MAX;
         XMFLOAT4 color(r, g, b, 1.0f);
         
-        // Add three vertices for the triangle
         m_Vertices.push_back({ XMFLOAT3(triangle.a.x, triangle.a.y, triangle.a.z), color });
         m_Vertices.push_back({ XMFLOAT3(triangle.b.x, triangle.b.y, triangle.b.z), color });
         m_Vertices.push_back({ XMFLOAT3(triangle.c.x, triangle.c.y, triangle.c.z), color });
@@ -216,44 +211,37 @@ bool Renderer::LoadTriangles(const std::vector<cs2::Triangle>& triangles)
     
     m_VertexCount = (int)m_Vertices.size();
     
-    // Create vertex buffer
     return CreateVertexBuffer();
 }
 
 void Renderer::Render()
 {
-    // Clear the back buffer and depth buffer
-    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; // Black
+    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
     m_DeviceContext->ClearRenderTargetView(m_RenderTargetView, clearColor);
     m_DeviceContext->ClearDepthStencilView(m_DepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
     
-    // Update constant buffers
+    m_DeviceContext->RSSetState(m_WireframeRasterizerState);
+    
     UpdateConstantBuffers();
     
-    // Set the vertex buffer
     UINT stride = sizeof(Vertex);
     UINT offset = 0;
     m_DeviceContext->IASetVertexBuffers(0, 1, &m_VertexBuffer, &stride, &offset);
     
-    // Set primitive topology
     m_DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
-    // Set shaders and constant buffers
     m_DeviceContext->VSSetShader(m_VertexShader, nullptr, 0);
     m_DeviceContext->PSSetShader(m_PixelShader, nullptr, 0);
     m_DeviceContext->VSSetConstantBuffers(0, 1, &m_CameraBuffer);
     m_DeviceContext->VSSetConstantBuffers(1, 1, &m_WorldBuffer);
     
-    // Draw the vertices
     m_DeviceContext->Draw(m_VertexCount, 0);
     
-    // Present the back buffer to the screen
     m_SwapChain->Present(1, 0);
 }
 
 bool Renderer::InitializeDirectX(HWND hWnd, int width, int height)
 {
-    // Create device and swap chain
     DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
     swapChainDesc.BufferCount = 1;
     swapChainDesc.BufferDesc.Width = width;
@@ -282,7 +270,6 @@ bool Renderer::InitializeDirectX(HWND hWnd, int width, int height)
         return false;
     }
     
-    // Create render target view
     ID3D11Texture2D* backBuffer = nullptr;
     hr = m_SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
     if (FAILED(hr))
@@ -299,7 +286,6 @@ bool Renderer::InitializeDirectX(HWND hWnd, int width, int height)
         return false;
     }
     
-    // Create depth stencil buffer and view
     D3D11_TEXTURE2D_DESC depthBufferDesc = {};
     depthBufferDesc.Width = width;
     depthBufferDesc.Height = height;
@@ -325,10 +311,8 @@ bool Renderer::InitializeDirectX(HWND hWnd, int width, int height)
         return false;
     }
     
-    // Set render targets
     m_DeviceContext->OMSetRenderTargets(1, &m_RenderTargetView, m_DepthStencilView);
     
-    // Set viewport
     D3D11_VIEWPORT viewport = {};
     viewport.TopLeftX = 0.0f;
     viewport.TopLeftY = 0.0f;
@@ -342,9 +326,32 @@ bool Renderer::InitializeDirectX(HWND hWnd, int width, int height)
     return true;
 }
 
+bool Renderer::CreateRasterizerState()
+{
+    D3D11_RASTERIZER_DESC rasterizerDesc = {};
+    rasterizerDesc.FillMode = D3D11_FILL_WIREFRAME;
+    rasterizerDesc.CullMode = D3D11_CULL_BACK;
+    rasterizerDesc.FrontCounterClockwise = FALSE;
+    rasterizerDesc.DepthBias = 0;
+    rasterizerDesc.DepthBiasClamp = 0.0f;
+    rasterizerDesc.SlopeScaledDepthBias = 0.0f;
+    rasterizerDesc.DepthClipEnable = TRUE;
+    rasterizerDesc.ScissorEnable = FALSE;
+    rasterizerDesc.MultisampleEnable = FALSE;
+    rasterizerDesc.AntialiasedLineEnable = FALSE;
+    
+    HRESULT hr = m_Device->CreateRasterizerState(&rasterizerDesc, &m_WireframeRasterizerState);
+    if (FAILED(hr))
+    {
+        std::cerr << "Failed to create wireframe rasterizer state" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
 bool Renderer::CreateShaders()
 {
-    // Vertex shader code
     const char* vsCode = R"(
         cbuffer CameraBuffer : register(b0)
         {
@@ -373,19 +380,16 @@ bool Renderer::CreateShaders()
         {
             PS_INPUT output;
             
-            // Transform the position
             float4 worldPosition = mul(float4(input.Position, 1.0f), World);
             float4 viewPosition = mul(worldPosition, View);
             output.Position = mul(viewPosition, Projection);
             
-            // Pass the color to the pixel shader
             output.Color = input.Color;
             
             return output;
         }
     )";
     
-    // Pixel shader code
     const char* psCode = R"(
         struct PS_INPUT
         {
@@ -399,7 +403,6 @@ bool Renderer::CreateShaders()
         }
     )";
     
-    // Compile vertex shader
     ID3DBlob* vsBlob = nullptr;
     ID3DBlob* errorBlob = nullptr;
     HRESULT hr = D3DCompile(vsCode, strlen(vsCode), "VS", nullptr, nullptr, "main", "vs_5_0", 0, 0, &vsBlob, &errorBlob);
@@ -413,7 +416,6 @@ bool Renderer::CreateShaders()
         return false;
     }
     
-    // Create vertex shader
     hr = m_Device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_VertexShader);
     if (FAILED(hr))
     {
@@ -422,13 +424,11 @@ bool Renderer::CreateShaders()
         return false;
     }
     
-    // Define input layout
     D3D11_INPUT_ELEMENT_DESC inputDesc[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
     };
     
-    // Create input layout
     hr = m_Device->CreateInputLayout(inputDesc, 2, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_InputLayout);
     vsBlob->Release();
     if (FAILED(hr))
@@ -437,10 +437,8 @@ bool Renderer::CreateShaders()
         return false;
     }
     
-    // Set input layout
     m_DeviceContext->IASetInputLayout(m_InputLayout);
     
-    // Compile pixel shader
     ID3DBlob* psBlob = nullptr;
     hr = D3DCompile(psCode, strlen(psCode), "PS", nullptr, nullptr, "main", "ps_5_0", 0, 0, &psBlob, &errorBlob);
     if (FAILED(hr))
@@ -453,7 +451,6 @@ bool Renderer::CreateShaders()
         return false;
     }
     
-    // Create pixel shader
     hr = m_Device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_PixelShader);
     psBlob->Release();
     if (FAILED(hr))
@@ -467,7 +464,6 @@ bool Renderer::CreateShaders()
 
 bool Renderer::CreateVertexBuffer()
 {
-    // Create vertex buffer
     D3D11_BUFFER_DESC bufferDesc = {};
     bufferDesc.Usage = D3D11_USAGE_DEFAULT;
     bufferDesc.ByteWidth = sizeof(Vertex) * m_VertexCount;
@@ -476,7 +472,6 @@ bool Renderer::CreateVertexBuffer()
     D3D11_SUBRESOURCE_DATA initData = {};
     initData.pSysMem = m_Vertices.data();
     
-    // Release previous vertex buffer if it exists
     if (m_VertexBuffer)
     {
         m_VertexBuffer->Release();
@@ -495,7 +490,6 @@ bool Renderer::CreateVertexBuffer()
 
 bool Renderer::CreateConstantBuffers()
 {
-    // Create camera buffer
     D3D11_BUFFER_DESC cameraBufferDesc = {};
     cameraBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
     cameraBufferDesc.ByteWidth = sizeof(CameraBuffer);
@@ -509,7 +503,6 @@ bool Renderer::CreateConstantBuffers()
         return false;
     }
     
-    // Create world buffer
     D3D11_BUFFER_DESC worldBufferDesc = {};
     worldBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
     worldBufferDesc.ByteWidth = sizeof(WorldBuffer);
@@ -528,7 +521,6 @@ bool Renderer::CreateConstantBuffers()
 
 void Renderer::UpdateConstantBuffers()
 {
-    // Update camera buffer
     D3D11_MAPPED_SUBRESOURCE mappedResource;
     HRESULT hr = m_DeviceContext->Map(m_CameraBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     if (SUCCEEDED(hr))
@@ -539,7 +531,6 @@ void Renderer::UpdateConstantBuffers()
         m_DeviceContext->Unmap(m_CameraBuffer, 0);
     }
     
-    // Update world buffer
     hr = m_DeviceContext->Map(m_WorldBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     if (SUCCEEDED(hr))
     {
@@ -549,7 +540,6 @@ void Renderer::UpdateConstantBuffers()
     }
 }
 
-// Application implementation
 Application::Application()
     : m_hWnd(nullptr)
     , m_Running(false)
@@ -567,11 +557,9 @@ Application::~Application()
 
 bool Application::Initialize(HINSTANCE hInstance, int nCmdShow)
 {
-    // Initialize window
     if (!InitializeWindow(hInstance, nCmdShow))
         return false;
     
-    // Initialize renderer
     if (!m_Renderer.Initialize(m_hWnd, 1280, 720))
         return false;
     
@@ -583,10 +571,8 @@ void Application::Run()
 {
     MSG msg = {};
     
-    // Main loop
     while (m_Running)
     {
-        // Process Windows messages
         while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             TranslateMessage(&msg);
@@ -602,10 +588,8 @@ void Application::Run()
         if (!m_Running)
             break;
         
-        // Process input and update
         ProcessInput();
         
-        // Render
         m_Renderer.Render();
     }
 }
@@ -628,7 +612,6 @@ bool Application::LoadTriangles(const std::vector<cs2::Triangle>& triangles)
 
 bool Application::InitializeWindow(HINSTANCE hInstance, int nCmdShow)
 {
-    // Register window class
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -644,7 +627,6 @@ bool Application::InitializeWindow(HINSTANCE hInstance, int nCmdShow)
         return false;
     }
     
-    // Create window
     RECT rc = { 0, 0, 1280, 720 };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
     
@@ -669,13 +651,11 @@ bool Application::InitializeWindow(HINSTANCE hInstance, int nCmdShow)
 
 void Application::ProcessInput()
 {
-    // Camera movement speed
-    float moveSpeed = 5.0f;  // Units per frame
-    float rotateSpeed = 0.01f;  // Radians per pixel
+    float moveSpeed = 5.0f;
+    float rotateSpeed = 0.01f;
     
     Camera& camera = m_Renderer.GetCamera();
     
-    // Move camera based on WASD keys
     if (m_Keys['W'])
         camera.MoveForward(moveSpeed);
     if (m_Keys['S'])
@@ -685,13 +665,11 @@ void Application::ProcessInput()
     if (m_Keys['D'])
         camera.MoveRight(moveSpeed);
     
-    // Move camera up/down with E/Q
     if (m_Keys['E'])
         camera.MoveUp(moveSpeed);
     if (m_Keys['Q'])
         camera.MoveUp(-moveSpeed);
     
-    // Increase/decrease speed with Shift/Ctrl
     if (m_Keys[VK_SHIFT])
         moveSpeed *= 2.0f;
     if (m_Keys[VK_CONTROL])
@@ -700,7 +678,6 @@ void Application::ProcessInput()
 
 LRESULT CALLBACK Application::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    // Get app pointer from window data
     Application* app = nullptr;
     if (message == WM_CREATE)
     {
@@ -713,7 +690,6 @@ LRESULT CALLBACK Application::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
         app = (Application*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
     }
     
-    // Handle messages
     switch (message)
     {
         case WM_KEYDOWN:
