@@ -1,4 +1,4 @@
-# CS2 Parser
+# [OUTDATED] CS2 Parser
 
 A tool for parsing and visualizing Counter-Strike 2 physics files (.vmdl).
 
